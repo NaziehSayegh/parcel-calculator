@@ -3,18 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Parcel Input Generator</title>
+    <title>Parcel Manager</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h2>Parcel Input Generator</h2>
-        <input type="number" id="parcelCount" placeholder="Enter number of parcels">
-        <input type="number" id="registeredArea" placeholder="Registered area">
-        <input type="number" id="calculatedArea" placeholder="Calculated area">
-        <button id="generateButton">Generate Inputs</button>
+        <h1>Parcel Manager</h1>
+        <label for="parcelCount">Number of Parcels:</label>
+        <input type="number" id="parcelCount">
+        
+        <label for="registeredArea">Registered Area:</label>
+        <input type="number" id="registeredArea">
+        
+        <label for="calculatedArea">Calculated Area:</label>
+        <input type="number" id="calculatedArea">
+        
+        <button id="generateButton">Generate Parcels</button>
         <div id="inputContainer"></div>
-        <button id="calculateButton" style="display: none;">Generate New Areas</button>
+        <button id="calculateButton" style="display: none;">Calculate</button>
+        <button id="copyButton" style="display: none;">Copy Table</button>
         <div id="results"></div>
     </div>
     <script src="script.js"></script>
