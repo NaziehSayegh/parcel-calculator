@@ -66,32 +66,37 @@ document.addEventListener("DOMContentLoaded", () => {
     calculateButton.addEventListener("click", () => {
         resultsContainer.innerHTML = "";
         copyButton.style.display = "none";
-
+    
         const registeredArea = parseFloat(registeredAreaInput.value);
         const calculatedArea = parseFloat(calculatedAreaInput.value);
         const absoluteDifference = Math.abs(registeredArea - calculatedArea);
         const permissibleError = (0.8 * Math.sqrt(registeredArea)) + (0.002 * registeredArea);
-
+    
         let totalBeforeRounding = 0;
         let totalAfterRounding = 0;
-
         let tableContent = `<table id="resultsTable">
                                 <tr>
                                     <th>Parcel Number</th>
                                     <th>New Area</th>
                                     <th>Rounded Area</th>
                                 </tr>`;
-
+    
         parcelInputs.forEach((parcel) => {
             const parcelNumber = parcel.numberInput.value.trim();
             const parcelArea = parseFloat(parcel.areaInput.value);
-            let newArea = (registeredArea / calculatedArea) * parcelArea;
+            let newArea = parcelArea;  // Default: Keep the input area as-is
             let roundedArea = Math.round(newArea);
-
+    
+            // Apply recalculation ONLY if the error is within permissible limits
+            if (absoluteDifference <= permissibleError) {
+                newArea = (registeredArea / calculatedArea) * parcelArea;
+                roundedArea = Math.round(newArea);
+            }
+    
             if (!isNaN(parcelArea) && parcelArea > 0 && parcelNumber !== "") {
                 totalBeforeRounding += newArea;
                 totalAfterRounding += roundedArea;
-
+    
                 tableContent += `<tr>
                                     <td>${parcelNumber}</td>
                                     <td>${newArea.toFixed(2)}</td>
@@ -99,22 +104,25 @@ document.addEventListener("DOMContentLoaded", () => {
                                 </tr>`;
             }
         });
-
+    
         tableContent += `<tr>
                             <td><strong>Total:</strong></td>
                             <td><strong>${totalBeforeRounding.toFixed(2)}</strong></td>
                             <td><strong>${totalAfterRounding}</strong></td>
                         </tr>
                     </table>`;
-
+    
         resultsContainer.innerHTML = `
             <p><strong>Absolute Difference:</strong> ${absoluteDifference.toFixed(2)}</p>
             <p><strong>Permissible Error:</strong> ${permissibleError.toFixed(2)}</p>
+            ${absoluteDifference > permissibleError ? '<p style="color: red;"><strong>Error exceeds permissible limits. Using original areas.</strong></p>' : ""}
             ${tableContent}
         `;
-
+    
         copyButton.style.display = "block";
     });
+    
+    
 
     // Copy Table Function (Fixed)
     copyButton.addEventListener("click", () => {
