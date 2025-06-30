@@ -107,6 +107,137 @@ function App() {
     setShowCopy(true);
   };
 
+  const exportAsImage = async () => {
+    if (!results) {
+      alert('No table data to export.');
+      return;
+    }
+
+    try {
+      // Create canvas
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      
+      // Set canvas size
+      canvas.width = 600;
+      canvas.height = 400 + (results.tableData.length * 30);
+      
+      // Set background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Set font
+      ctx.font = '14px monospace';
+      ctx.fillStyle = '#000000';
+      
+      let y = 30;
+      
+      // Title
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText('PARCEL CALCULATION TABLE', 150, y);
+      y += 40;
+      
+      // Draw table border
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(50, y - 10, 500, 30);
+      
+      // Headers
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('Parcel Number', 70, y + 10);
+      ctx.fillText('New Area', 220, y + 10);
+      ctx.fillText('Rounded Area', 370, y + 10);
+      y += 30;
+      
+      // Header line
+      ctx.strokeRect(50, y - 10, 500, 1);
+      
+      // Data rows
+      ctx.font = '14px monospace';
+      results.tableData.forEach((row, index) => {
+        // Alternate row background
+        if (index % 2 === 0) {
+          ctx.fillStyle = '#f9f9f9';
+          ctx.fillRect(50, y - 5, 500, 25);
+        }
+        
+        ctx.fillStyle = '#000000';
+        ctx.fillText(row.parcelNumber, 100, y + 10);
+        ctx.fillText(row.newArea, 240, y + 10);
+        ctx.fillText(row.roundedArea.toString(), 400, y + 10);
+        
+        // Row border
+        ctx.strokeStyle = '#cccccc';
+        ctx.lineWidth = 0.5;
+        ctx.strokeRect(50, y - 5, 500, 25);
+        
+        y += 25;
+      });
+      
+      // Total row
+      ctx.fillStyle = '#e6f3ff';
+      ctx.fillRect(50, y, 500, 30);
+      
+      ctx.fillStyle = '#000000';
+      ctx.font = 'bold 14px monospace';
+      ctx.fillText('TOTAL:', 100, y + 20);
+      ctx.fillText(results.totalBeforeRounding, 240, y + 20);
+      ctx.fillText(results.totalAfterRounding.toString(), 400, y + 20);
+      
+      // Total border
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(50, y, 500, 30);
+      
+      y += 50;
+      
+      // Summary
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText('CALCULATION SUMMARY:', 70, y);
+      y += 30;
+      
+      ctx.font = '14px monospace';
+      ctx.fillText(`Absolute Difference: ${results.absoluteDifference || '0.00'}`, 70, y);
+      y += 25;
+      ctx.fillText(`Permissible Error: ${results.permissibleError || '0.00'}`, 70, y);
+      y += 35;
+      
+      if (results.exceedsLimit) {
+        ctx.fillStyle = '#ff0000';
+        ctx.font = 'bold 14px monospace';
+        ctx.fillText('⚠ WARNING: Error exceeds permissible limits!', 70, y);
+      } else {
+        ctx.fillStyle = '#008000';
+        ctx.font = 'bold 14px monospace';
+        ctx.fillText('✓ Calculation within acceptable limits', 70, y);
+      }
+      
+      // Convert canvas to blob and copy to clipboard
+      canvas.toBlob(async (blob) => {
+        try {
+          const item = new ClipboardItem({ 'image/png': blob });
+          await navigator.clipboard.write([item]);
+          alert('Table image copied to clipboard! 🖼️\nYou can now paste it directly into AutoCAD or any other application.');
+        } catch (error) {
+          console.error('Failed to copy image to clipboard:', error);
+          // Fallback: download the image if clipboard fails
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'parcel-calculation-table.png';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          alert('Could not copy to clipboard. Image downloaded instead! 📥');
+        }
+      });
+    } catch (error) {
+      console.error('Error creating image:', error);
+      alert('Error creating table image. Please try again.');
+    }
+  };
+
   const copyTable = () => {
     if (!results) {
       alert('No table found to copy.');
@@ -311,15 +442,27 @@ function App() {
             )}
 
             {showCopy && (
-              <button
-                onClick={copyTable}
-                className="flex-1 sm:flex-none bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
-              >
-                <span className="flex items-center justify-center">
-                  <span className="mr-2">📋</span>
-                  Copy Table
-                </span>
-              </button>
+              <>
+                <button
+                  onClick={copyTable}
+                  className="flex-1 sm:flex-none bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
+                >
+                  <span className="flex items-center justify-center">
+                    <span className="mr-2">📋</span>
+                    Copy Text
+                  </span>
+                </button>
+                
+                <button
+                  onClick={exportAsImage}
+                  className="flex-1 sm:flex-none bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
+                >
+                  <span className="flex items-center justify-center">
+                    <span className="mr-2">🖼️</span>
+                    Copy Image
+                  </span>
+                </button>
+              </>
             )}
           </div>
 
