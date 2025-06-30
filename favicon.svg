@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6366F1;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="url(#gradient)" stroke="#1E40AF" stroke-width="2"/>
+  
+  <!-- Calculator icon -->
+  <rect x="18" y="14" width="28" height="36" rx="4" fill="#FFFFFF" stroke="#E5E7EB" stroke-width="1"/>
+  
+  <!-- Screen -->
+  <rect x="22" y="18" width="20" height="8" rx="2" fill="#F3F4F6" stroke="#D1D5DB"/>
+  <text x="32" y="24" text-anchor="middle" font-family="Arial" font-size="6" font-weight="bold" fill="#374151">123.45</text>
+  
+  <!-- Buttons -->
+  <circle cx="26" cy="32" r="2.5" fill="#3B82F6"/>
+  <circle cx="32" cy="32" r="2.5" fill="#3B82F6"/>
+  <circle cx="38" cy="32" r="2.5" fill="#3B82F6"/>
+  
+  <circle cx="26" cy="38" r="2.5" fill="#3B82F6"/>
+  <circle cx="32" cy="38" r="2.5" fill="#3B82F6"/>
+  <circle cx="38" cy="38" r="2.5" fill="#10B981"/>
+  
+  <circle cx="26" cy="44" r="2.5" fill="#3B82F6"/>
+  <circle cx="32" cy="44" r="2.5" fill="#3B82F6"/>
+  <circle cx="38" cy="44" r="2.5" fill="#EF4444"/>
+  
+  <!-- Small parcel indicator -->
+  <rect x="42" y="12" width="8" height="6" rx="1" fill="#FBBF24" stroke="#F59E0B"/>
+  <text x="46" y="16" text-anchor="middle" font-family="Arial" font-size="4" font-weight="bold" fill="#92400E">P</text>
+</svg> 

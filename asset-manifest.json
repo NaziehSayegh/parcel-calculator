@@ -1,0 +1,13 @@
+{
+  "files": {
+    "main.css": "/parcel-calculator/static/css/main.71fd3f97.css",
+    "main.js": "/parcel-calculator/static/js/main.69ccf23c.js",
+    "index.html": "/parcel-calculator/index.html",
+    "main.71fd3f97.css.map": "/parcel-calculator/static/css/main.71fd3f97.css.map",
+    "main.69ccf23c.js.map": "/parcel-calculator/static/js/main.69ccf23c.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.71fd3f97.css",
+    "static/js/main.69ccf23c.js"
+  ]
+}
