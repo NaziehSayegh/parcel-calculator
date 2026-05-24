@@ -1,4 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { 
+  Calculator, Download, FileText, CheckCircle, AlertTriangle, 
+  Moon, Sun, Plus, Minus, FilePlus, Copy, RefreshCw, Undo, Redo 
+} from 'lucide-react';
 
 function App() {
   const [parcelCount, setParcelCount] = useState('');
@@ -6,28 +12,25 @@ function App() {
   const [calculatedArea, setCalculatedArea] = useState('');
   const [parcels, setParcels] = useState([]);
   const [showCalculate, setShowCalculate] = useState(false);
-  const [showCopy, setShowCopy] = useState(false);
   const [results, setResults] = useState(null);
   const [isCalculating, setIsCalculating] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [history, setHistory] = useState([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [errorCalc, setErrorCalc] = useState(null);
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (event) => {
-      // Ctrl+Z for undo
       if (event.ctrlKey && event.key === 'z' && !event.shiftKey) {
         event.preventDefault();
         undo();
       }
-      // Ctrl+Y or Ctrl+Shift+Z for redo
       if ((event.ctrlKey && event.key === 'y') || (event.ctrlKey && event.shiftKey && event.key === 'z')) {
         event.preventDefault();
         redo();
       }
-      // Ctrl+D for dark mode toggle
       if (event.ctrlKey && event.key === 'd') {
         event.preventDefault();
         toggleDarkMode();
@@ -38,42 +41,59 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [historyIndex, history.length, isDarkMode]);
 
-  // Initialize history with empty state
   useEffect(() => {
     if (history.length === 0) {
       saveToHistory({ action: 'Initial state' });
     }
   }, []);
 
-  // Notification system
+  // Instant Error Calculation
+  useEffect(() => {
+    const regArea = parseFloat(registeredArea);
+    const calcArea = parseFloat(calculatedArea);
+    
+    if (!isNaN(regArea) && !isNaN(calcArea) && regArea > 0 && calcArea > 0) {
+      const absoluteDifference = Math.abs(regArea - calcArea);
+      const permissibleError = (0.8 * Math.sqrt(regArea)) + (0.002 * regArea);
+      setErrorCalc({
+        absoluteDifference: absoluteDifference.toFixed(4),
+        permissibleError: permissibleError.toFixed(4),
+        exceedsLimit: absoluteDifference > permissibleError
+      });
+    } else {
+      setErrorCalc(null);
+    }
+  }, [registeredArea, calculatedArea]);
+
+  // If parcels area changes, update calculatedArea automatically
+  useEffect(() => {
+    if (parcels.length > 0) {
+      const totalOriginal = parcels.reduce((acc, p) => acc + (parseFloat(p.parcelArea) || 0), 0);
+      if (totalOriginal > 0) {
+        setCalculatedArea(totalOriginal.toFixed(4));
+      }
+    }
+  }, [parcels]);
+
   const addNotification = (message, type = 'info', duration = 4000) => {
     const id = Date.now() + Math.random();
-    const notification = { id, message, type, duration };
-    
-    setNotifications(prev => [...prev, notification]);
-    
-    // Auto-dismiss notification
-    setTimeout(() => {
-      removeNotification(id);
-    }, duration);
+    setNotifications(prev => [...prev, { id, message, type, duration }]);
+    setTimeout(() => removeNotification(id), duration);
   };
 
-  const removeNotification = (id) => {
-    setNotifications(prev => prev.filter(notification => notification.id !== id));
-  };
+  const removeNotification = (id) => setNotifications(prev => prev.filter(n => n.id !== id));
+  const showSuccess = (msg) => addNotification(msg, 'success', 3000);
+  const showError = (msg) => addNotification(msg, 'error', 5000);
+  const showWarning = (msg) => addNotification(msg, 'warning', 4500);
+  const showInfo = (msg) => addNotification(msg, 'info', 4000);
 
-  const showSuccess = (message) => addNotification(message, 'success', 3000);
-  const showError = (message) => addNotification(message, 'error', 5000);
-  const showInfo = (message) => addNotification(message, 'info', 4000);
-  const showWarning = (message) => addNotification(message, 'warning', 4500);
-
-  const addParcelRow = (index, parcelNumValue = '', parcelAreaValue = '') => {
-    const newParcel = {
+  const addParcelRow = (index) => {
+    setParcels(prev => [...prev, {
       id: Date.now() + index,
-      parcelNumber: parcelNumValue,
-      parcelArea: parcelAreaValue
-    };
-    setParcels(prev => [...prev, newParcel]);
+      parcelNumber: (prev.length + 1).toString(),
+      parcelArea: '',
+      points: ''
+    }]);
   };
 
   const removeParcelRow = (id) => {
@@ -81,928 +101,494 @@ function App() {
   };
 
   const updateParcelInput = (id, field, value) => {
-    setParcels(prev => 
-      prev.map(parcel => 
-        parcel.id === id ? { ...parcel, [field]: value } : parcel
-      )
-    );
+    setParcels(prev => prev.map(parcel => parcel.id === id ? { ...parcel, [field]: value } : parcel));
   };
 
   const generateParcels = () => {
-    const parcelCountNum = parseInt(parcelCount, 10);
-    if (isNaN(parcelCountNum) || parcelCountNum <= 0) {
+    const count = parseInt(parcelCount, 10);
+    if (isNaN(count) || count <= 0) {
       showError('Please enter a valid number of parcels.');
       return;
     }
 
     saveToHistory({ action: 'Generate parcels' });
+    const newParcels = Array.from({ length: count }, (_, i) => ({
+      id: Date.now() + i,
+      parcelNumber: (i + 1).toString(),
+      parcelArea: '',
+      points: ''
+    }));
     
-    setParcels([]);
-    setResults(null);
-    setShowCopy(false);
-
-    const newParcels = [];
-    for (let i = 1; i <= parcelCountNum; i++) {
-      newParcels.push({
-        id: Date.now() + i,
-        parcelNumber: i.toString(),
-        parcelArea: ''
-      });
-    }
     setParcels(newParcels);
+    setResults(null);
     setShowCalculate(true);
-    showSuccess(`Generated ${parcelCountNum} parcel${parcelCountNum > 1 ? 's' : ''} successfully! 🎉`);
+    showSuccess(`Generated ${count} parcels successfully!`);
   };
 
   const calculateResults = async () => {
     saveToHistory({ action: 'Calculate results' });
-    
     setIsCalculating(true);
     setResults(null);
-    setShowCopy(false);
     
-    showInfo('Calculating parcel areas... 🧮');
-
-    // Add a small delay for better UX
     await new Promise(resolve => setTimeout(resolve, 500));
 
-    const registeredAreaNum = parseFloat(registeredArea);
-    const calculatedAreaNum = parseFloat(calculatedArea);
-    const absoluteDifference = Math.abs(registeredAreaNum - calculatedAreaNum);
-    const permissibleError = (0.8 * Math.sqrt(registeredAreaNum)) + (0.002 * registeredAreaNum);
+    const regArea = parseFloat(registeredArea);
+    const calcArea = parseFloat(calculatedArea);
+    
+    if (isNaN(regArea) || isNaN(calcArea)) {
+      showError('Please ensure Registered Area and Calculated Area are filled.');
+      setIsCalculating(false);
+      return;
+    }
 
-    let totalBeforeRounding = 0;
-    let totalAfterRounding = 0;
+    const diff = Math.abs(regArea - calcArea);
+    const permError = (0.8 * Math.sqrt(regArea)) + (0.002 * regArea);
+    const exceedsLimit = diff > permError;
+
+    let totalBefore = 0;
+    let totalAfter = 0;
     const tableData = [];
 
     parcels.forEach((parcel) => {
-      const parcelNumber = parcel.parcelNumber.trim();
-      const parcelArea = parseFloat(parcel.parcelArea);
-      let newArea = parcelArea;
+      const pNum = parcel.parcelNumber.trim();
+      const pArea = parseFloat(parcel.parcelArea);
+      const pts = parcel.points.trim();
+      
+      let newArea = pArea;
       let roundedArea = Math.round(newArea);
 
-      if (absoluteDifference <= permissibleError) {
-        newArea = (registeredAreaNum / calculatedAreaNum) * parcelArea;
+      if (!exceedsLimit) {
+        newArea = (regArea / calcArea) * pArea;
         roundedArea = Math.round(newArea);
       }
 
-      if (!isNaN(parcelArea) && parcelArea > 0 && parcelNumber !== '') {
-        totalBeforeRounding += newArea;
-        totalAfterRounding += roundedArea;
-
+      if (!isNaN(pArea) && pArea > 0 && pNum !== '') {
+        totalBefore += newArea;
+        totalAfter += roundedArea;
         tableData.push({
-          parcelNumber,
-          newArea: newArea.toFixed(2),
-          roundedArea
+          parcelNumber: pNum,
+          originalArea: pArea.toFixed(4),
+          newArea: newArea.toFixed(4),
+          roundedArea,
+          points: pts
         });
       }
     });
 
     setResults({
-      absoluteDifference: absoluteDifference.toFixed(2),
-      permissibleError: permissibleError.toFixed(2),
-      exceedsLimit: absoluteDifference > permissibleError,
+      absoluteDifference: diff.toFixed(4),
+      permissibleError: permError.toFixed(4),
+      exceedsLimit,
       tableData,
-      totalBeforeRounding: totalBeforeRounding.toFixed(2),
-      totalAfterRounding
+      totalBeforeRounding: totalBefore.toFixed(4),
+      totalAfterRounding: totalAfter
     });
 
     setIsCalculating(false);
-    setShowCopy(true);
-    showSuccess(`Calculation completed! ${tableData.length} parcel${tableData.length > 1 ? 's' : ''} processed. ✨`);
+    showSuccess('Calculation completed!');
   };
 
-  const exportAsImage = async () => {
-    if (!results) {
-      showWarning('No table data to export. Please calculate results first.');
+  const exportAsPDF = () => {
+    if (!errorCalc && !results) {
+      showWarning('No data available to export.');
       return;
     }
 
-    try {
-      // Create canvas
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      // Set canvas size
-      canvas.width = 600;
-      canvas.height = 450 + (results.tableData.length * 40);
-      
-      // Set background
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      // Set font for Arabic text
-      ctx.font = '18px Arial';
-      ctx.fillStyle = '#000000';
-      
-      let y = 50;
-      
-      // Arabic Title: جدول الأقراز (1) - positioned at top right
-      ctx.font = 'bold 24px Arial';
-      ctx.textAlign = 'right';
-      ctx.fillText('(1) جدول الأقراز', 550, y);
-      y += 60;
-      
-      // Draw main table border
-      const tableX = 50;
-      const tableY = y;
-      const tableWidth = 500;
-      const tableHeight = 120 + (results.tableData.length * 40);
-      
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(tableX, tableY, tableWidth, tableHeight);
-      
-      // Header row background
-      ctx.fillStyle = '#f0f0f0';
-      ctx.fillRect(tableX + 1, tableY + 1, tableWidth - 2, 80);
-      
-      // Column divisions (3 main columns)
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
-      
-      // First vertical divider (between area and parcel number)
-      ctx.beginPath();
-      ctx.moveTo(tableX + 200, tableY);
-      ctx.lineTo(tableX + 200, tableY + tableHeight);
-      ctx.stroke();
-      
-      // Second vertical divider (between parcel number and rounded area)
-      ctx.beginPath();
-      ctx.moveTo(tableX + 350, tableY);
-      ctx.lineTo(tableX + 350, tableY + tableHeight);
-      ctx.stroke();
-      
-      // Horizontal divider after main headers
-      ctx.beginPath();
-      ctx.moveTo(tableX, tableY + 40);
-      ctx.lineTo(tableX + tableWidth, tableY + 40);
-      ctx.stroke();
-      
-      // Additional horizontal divider for sub-headers
-      ctx.beginPath();
-      ctx.moveTo(tableX, tableY + 80);
-      ctx.lineTo(tableX + tableWidth, tableY + 80);
-      ctx.stroke();
-      
-      // Header text
-      ctx.fillStyle = '#000000';
-      ctx.font = 'bold 16px Arial';
-      ctx.textAlign = 'center';
-      
-      // Main headers
-      ctx.fillText('المساحه', tableX + 100, tableY + 25);  // Area (left column)
-      ctx.fillText('رقم القطعه', tableX + 275, tableY + 25);  // Parcel Number (middle column)
-      ctx.fillText('المساحه النهائية', tableX + 425, tableY + 25);  // Final Area (right column)
-      
-      // Sub headers
-      ctx.font = '14px Arial';
-      ctx.fillText('بالدونم المتري', tableX + 100, tableY + 60);  // "In Metric Dunums"
-      // Empty sub-headers for other columns
-      
-      y = tableY + 80;
-      
-      // Data rows
-      ctx.font = '16px Arial';
-      ctx.textAlign = 'center';
-      
-      results.tableData.forEach((row, index) => {
-        // Row background (alternating)
-        if (index % 2 === 0) {
-          ctx.fillStyle = '#f9f9f9';
-          ctx.fillRect(tableX + 1, y, tableWidth - 2, 40);
-        }
-        
-        // Row border
-        ctx.strokeStyle = '#000000';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(tableX, y + 40);
-        ctx.lineTo(tableX + tableWidth, y + 40);
-        ctx.stroke();
-        
-        // Vertical borders
-        ctx.beginPath();
-        ctx.moveTo(tableX + 200, y);
-        ctx.lineTo(tableX + 200, y + 40);
-        ctx.stroke();
-        
-        ctx.beginPath();
-        ctx.moveTo(tableX + 350, y);
-        ctx.lineTo(tableX + 350, y + 40);
-        ctx.stroke();
-        
-        // Data text
-        ctx.fillStyle = '#000000';
-        ctx.fillText(row.newArea, tableX + 100, y + 25);  // Area value in left column
-        ctx.fillText(row.parcelNumber, tableX + 275, y + 25);  // Parcel number in middle column
-        ctx.fillText(row.roundedArea.toString(), tableX + 425, y + 25);  // Rounded area in right column
-        
-        y += 40;
-      });
-      
-      // Total row
-      ctx.fillStyle = '#e6f3ff';
-      ctx.fillRect(tableX + 1, y, tableWidth - 2, 40);
-      
-      // Total row borders
-      ctx.strokeStyle = '#000000';
-      ctx.lineWidth = 2;
-      
-      // Horizontal border for total row
-      ctx.beginPath();
-      ctx.moveTo(tableX, y);
-      ctx.lineTo(tableX + tableWidth, y);
-      ctx.stroke();
-      
-      ctx.beginPath();
-      ctx.moveTo(tableX, y + 40);
-      ctx.lineTo(tableX + tableWidth, y + 40);
-      ctx.stroke();
-      
-      // Vertical borders for total row
-      ctx.beginPath();
-      ctx.moveTo(tableX + 200, y);
-      ctx.lineTo(tableX + 200, y + 40);
-      ctx.stroke();
-      
-      ctx.beginPath();
-      ctx.moveTo(tableX + 350, y);
-      ctx.lineTo(tableX + 350, y + 40);
-      ctx.stroke();
-      
-      // Total text
-      ctx.fillStyle = '#000000';
-      ctx.font = 'bold 16px Arial';
-      ctx.fillText(results.totalBeforeRounding, tableX + 100, y + 25);  // Total in left column
-      // Empty middle column for parcel number total
-      ctx.fillText(results.totalAfterRounding.toString(), tableX + 425, y + 25);  // Total rounded in right column
-      
-      y += 60;
-      
-      // Summary section in Arabic - positioned on the right
-      ctx.font = '14px Arial';
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#000000';
-      ctx.fillText(`الفرق المطلق: ${results.absoluteDifference || 'NaN'}`, 530, y);
-      y += 25;
-      ctx.fillText(`الخطأ المسموح: ${results.permissibleError || 'NaN'}`, 530, y);
-      y += 35;
-      
-      if (results.exceedsLimit) {
-        ctx.fillStyle = '#ff0000';
-        ctx.font = 'bold 14px Arial';
-        ctx.fillText('تحذير: الخطأ يتجاوز الحدود المسموحة!', 530, y);
-      } else {
-        ctx.fillStyle = '#008000';
-        ctx.font = 'bold 14px Arial';
-        ctx.fillText('الحساب ضمن الحدود المقبولة', 530, y);
-      }
-      
-      // Convert canvas to blob and copy to clipboard
-      canvas.toBlob(async (blob) => {
-        try {
-          const item = new ClipboardItem({ 'image/png': blob });
-          await navigator.clipboard.write([item]);
-          showSuccess('Arabic table copied to clipboard! 🖼️ Ready to paste into AutoCAD.');
-        } catch (error) {
-          console.error('Failed to copy image to clipboard:', error);
-          // Fallback: download the image if clipboard fails
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = 'arabic-parcel-table.png';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          showInfo('Cannot copy to clipboard. Image downloaded instead! 📥');
-        }
-      });
-    } catch (error) {
-      console.error('Error creating image:', error);
-      showError('Error creating table image. Please try again.');
-    }
-  };
+    const doc = new jsPDF();
+    let y = 20;
+    const margin = 20;
 
-  const copyTable = () => {
-    if (!results) {
-      showWarning('No table found to copy. Please calculate results first.');
-      return;
-    }
+    const addText = (text, isBold = false) => {
+      doc.setFont('courier', isBold ? 'bold' : 'normal');
+      doc.text(text, margin, y);
+      y += 6;
+    };
 
-    // Simple AutoCAD-friendly format using only basic characters
-    let textToCopy = '';
-    
-    // Title
-    textToCopy += 'PARCEL CALCULATION TABLE\n';
-    textToCopy += '=======================\n\n';
-    
-    // Simple header without vertical lines
-    textToCopy += 'Parcel No.      New Area        Rounded Area\n';
-    textToCopy += '----------      --------        ------------\n';
-    
-    // Data rows with fixed spacing
-    results.tableData.forEach(row => {
-      // Use fixed-width formatting for each column
-      const parcelStr = row.parcelNumber.toString().padStart(6, ' ').padEnd(10, ' ');
-      const newAreaStr = row.newArea.toString().padStart(8, ' ').padEnd(12, ' ');
-      const roundedStr = row.roundedArea.toString().padStart(8, ' ');
-      
-      textToCopy += `${parcelStr}      ${newAreaStr}    ${roundedStr}\n`;
-    });
-    
-    // Separator
-    textToCopy += '----------      --------        ------------\n';
-    
-    // Total row
-    const totalLabel = 'TOTAL:'.padEnd(10, ' ');
-    const totalBeforeStr = results.totalBeforeRounding.toString().padStart(8, ' ').padEnd(12, ' ');
-    const totalAfterStr = results.totalAfterRounding.toString().padStart(8, ' ');
-    
-    textToCopy += `${totalLabel}      ${totalBeforeStr}    ${totalAfterStr}\n`;
-    textToCopy += '==============================================\n\n';
-    
-    // Summary with better formatting
-    textToCopy += 'CALCULATION SUMMARY:\n';
-    textToCopy += '-------------------\n';
-    textToCopy += `Absolute Difference: ${results.absoluteDifference || '0.00'}\n`;
-    textToCopy += `Permissible Error:   ${results.permissibleError || '0.00'}\n\n`;
-    
-    if (results.exceedsLimit) {
-      textToCopy += '*** WARNING: Error exceeds permissible limits! ***\n';
+    doc.setFontSize(12);
+    addText('========================================================================', true);
+    y += 2;
+    doc.setFontSize(14);
+    addText('ERROR CALCULATIONS', true);
+    y += 2;
+    doc.setFontSize(12);
+    addText('========================================================================', true);
+    y += 8;
+
+    addText('OVERALL CALCULATION SUMMARY:', true);
+    y += 6;
+
+    const regArea = parseFloat(registeredArea).toFixed(4);
+    const calcArea = parseFloat(calculatedArea).toFixed(4);
+    const diff = results?.absoluteDifference || errorCalc?.absoluteDifference || '0.0000';
+    const perm = results?.permissibleError || errorCalc?.permissibleError || '0.0000';
+
+    addText(`Total Registered Area:   ${regArea} m2`);
+    y += 2;
+    addText(`Total Calculated Area:   ${calcArea} m2`);
+    y += 2;
+    addText(`Absolute Difference:     ${diff} m2`);
+    y += 2;
+    addText(`Permissible Error:       ${perm} m2`);
+    y += 6;
+
+    const formula = `Formula: Permissible Error = 0.8 x \\u221A(${regArea}) + 0.002 x ${regArea}`;
+    doc.setFont('courier', 'normal');
+    // Using simple text for root symbol to ensure Courier compatibility
+    doc.text(`Formula: Permissible Error = 0.8 x sqrt(${regArea}) + 0.002 x ${regArea}`, margin, y);
+    y += 12;
+
+    const exceedsLimit = results?.exceedsLimit ?? errorCalc?.exceedsLimit;
+    if (exceedsLimit) {
+      addText('WARNING: EXCEEDS PERMISSIBLE LIMITS - Original areas retained', true);
     } else {
-      textToCopy += 'Status: Calculation within acceptable limits\n';
+      addText('OK: WITHIN PERMISSIBLE LIMITS - Areas adjusted proportionally', true);
     }
-    
-    textToCopy += '\n';
-    textToCopy += 'Generated by Parcel Manager';
 
-    const textArea = document.createElement('textarea');
-    textArea.value = textToCopy;
-    document.body.appendChild(textArea);
-    textArea.select();
-    document.execCommand('copy');
-    document.body.removeChild(textArea);
+    if (results?.tableData?.length > 0) {
+      y += 12;
+      addText('PARCEL RESULTS:', true);
+      y += 4;
+      
+      const totalPoints = results.tableData.reduce((acc, r) => acc + (parseInt(r.points) || 0), 0);
 
-    showSuccess('AutoCAD-optimized table copied to clipboard! 📋');
+      autoTable(doc, {
+        startY: y,
+        theme: 'plain',
+        styles: { font: 'courier', fontSize: 10, cellPadding: 1.5 },
+        headStyles: { fontStyle: 'normal', textColor: [0, 0, 0] },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 40 },
+          2: { cellWidth: 40 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 20 }
+        },
+        head: [['Parcel #', 'Original (m2)', 'Adjusted (m2)', 'Rounded (m2)', 'Points']],
+        body: [
+          ['--------', '-------------', '-------------', '------------', '------'],
+          ...results.tableData.map(row => [
+            row.parcelNumber,
+            row.originalArea,
+            row.newArea,
+            row.roundedArea,
+            row.points || ''
+          ]),
+          ['', '', '', '', ''],
+          [
+            'TOTAL:',
+            calcArea,
+            results.totalBeforeRounding,
+            results.totalAfterRounding,
+            totalPoints || ''
+          ]
+        ]
+      });
+    }
+
+    doc.save('Error_Calculations.pdf');
+    showSuccess('PDF Downloaded Successfully!');
   };
 
-  // Dark mode toggle
-  const toggleDarkMode = () => {
-    setIsDarkMode(!isDarkMode);
-    showInfo(`Switched to ${!isDarkMode ? 'dark' : 'light'} mode! ${!isDarkMode ? '🌙' : '☀️'}`);
-  };
+  const toggleDarkMode = () => setIsDarkMode(!isDarkMode);
 
-  // History management for undo/redo
   const saveToHistory = (state) => {
     const newState = {
-      parcelCount,
-      registeredArea,
-      calculatedArea,
-      parcels,
-      results,
-      timestamp: Date.now(),
-      action: state.action || 'Unknown action'
+      parcelCount, registeredArea, calculatedArea, parcels, results,
+      timestamp: Date.now(), action: state.action || 'Unknown action'
     };
-    
-    const newHistory = history.slice(0, historyIndex + 1);
-    newHistory.push(newState);
-    
-    // Limit history to last 20 actions
-    if (newHistory.length > 20) {
-      newHistory.shift();
-    }
-    
+    const newHistory = [...history.slice(0, historyIndex + 1), newState].slice(-20);
     setHistory(newHistory);
     setHistoryIndex(newHistory.length - 1);
   };
 
   const undo = () => {
     if (historyIndex > 0) {
-      const previousState = history[historyIndex - 1];
-      setParcelCount(previousState.parcelCount);
-      setRegisteredArea(previousState.registeredArea);
-      setCalculatedArea(previousState.calculatedArea);
-      setParcels(previousState.parcels);
-      setResults(previousState.results);
+      const state = history[historyIndex - 1];
+      setParcelCount(state.parcelCount); setRegisteredArea(state.registeredArea);
+      setCalculatedArea(state.calculatedArea); setParcels(state.parcels); setResults(state.results);
       setHistoryIndex(historyIndex - 1);
-      showInfo(`Undone: ${previousState.action} ↶`);
-    } else {
-      showWarning('Nothing to undo! 🤷‍♂️');
     }
   };
 
   const redo = () => {
     if (historyIndex < history.length - 1) {
-      const nextState = history[historyIndex + 1];
-      setParcelCount(nextState.parcelCount);
-      setRegisteredArea(nextState.registeredArea);
-      setCalculatedArea(nextState.calculatedArea);
-      setParcels(nextState.parcels);
-      setResults(nextState.results);
+      const state = history[historyIndex + 1];
+      setParcelCount(state.parcelCount); setRegisteredArea(state.registeredArea);
+      setCalculatedArea(state.calculatedArea); setParcels(state.parcels); setResults(state.results);
       setHistoryIndex(historyIndex + 1);
-      showInfo(`Redone: ${nextState.action} ↷`);
-    } else {
-      showWarning('Nothing to redo! 🤷‍♂️');
     }
   };
 
   return (
-    <div className={`min-h-screen transition-all duration-300 py-8 px-4 ${
+    <div className={`min-h-screen transition-all duration-500 py-10 px-4 font-sans ${
       isDarkMode 
-        ? 'bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900' 
-        : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+        ? 'bg-[#0f172a] text-slate-200' 
+        : 'bg-[#f8fafc] text-slate-800'
     }`}>
-      <div className="max-w-4xl mx-auto">
-        {/* Header with Controls */}
-        <div className="text-center mb-8">
-          <div className="flex justify-between items-center mb-6">
-            {/* Undo/Redo Controls */}
-            <div className="flex space-x-2">
-              <button
-                onClick={undo}
-                disabled={historyIndex <= 0}
-                className={`p-3 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
-                  isDarkMode
-                    ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'
-                    : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'
-                }`}
-                title="Undo (Ctrl+Z)"
-              >
-                <span className="text-lg">↶</span>
-              </button>
-              <button
-                onClick={redo}
-                disabled={historyIndex >= history.length - 1}
-                className={`p-3 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none ${
-                  isDarkMode
-                    ? 'bg-gray-700 hover:bg-gray-600 text-white border border-gray-600'
-                    : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'
-                }`}
-                title="Redo (Ctrl+Y)"
-              >
-                <span className="text-lg">↷</span>
-              </button>
+      <div className="max-w-5xl mx-auto space-y-8">
+        
+        {/* Header Section */}
+        <header className="flex flex-col md:flex-row items-center justify-between gap-6 pb-6 border-b border-slate-500/20">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-blue-600 rounded-2xl shadow-lg shadow-blue-600/20">
+              <Calculator className="w-8 h-8 text-white" />
             </div>
-
-            {/* Dark Mode Toggle */}
-            <button
-              onClick={toggleDarkMode}
-              className={`p-3 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg transform hover:scale-105 ${
-                isDarkMode
-                  ? 'bg-yellow-600 hover:bg-yellow-500 text-white'
-                  : 'bg-gray-800 hover:bg-gray-700 text-white'
-              }`}
-              title={`Switch to ${isDarkMode ? 'light' : 'dark'} mode`}
-            >
-              <span className="text-lg">{isDarkMode ? '☀️' : '🌙'}</span>
+            <div>
+              <h1 className="text-3xl font-extrabold tracking-tight">Parcel Manager Pro</h1>
+              <p className="text-sm font-medium opacity-70 mt-1">Advanced Area Error Calculation</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <button onClick={undo} disabled={historyIndex <= 0} className="p-2.5 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 disabled:opacity-50 transition-all"><Undo className="w-5 h-5" /></button>
+            <button onClick={redo} disabled={historyIndex >= history.length - 1} className="p-2.5 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 disabled:opacity-50 transition-all"><Redo className="w-5 h-5" /></button>
+            <button onClick={toggleDarkMode} className="p-2.5 rounded-xl bg-slate-500/10 hover:bg-slate-500/20 transition-all">
+              {isDarkMode ? <Sun className="w-5 h-5 text-amber-400" /> : <Moon className="w-5 h-5 text-blue-600" />}
+            </button>
+            <button onClick={exportAsPDF} className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold flex items-center gap-2 shadow-lg shadow-blue-600/20 transition-all">
+              <Download className="w-4 h-4" /> Export PDF
             </button>
           </div>
+        </header>
 
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full mb-4 shadow-lg">
-            <span className="text-2xl">📊</span>
-          </div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-2">
-            Parcel Manager
-          </h1>
-          <p className={`text-lg transition-colors duration-300 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-            Professional parcel area calculation tool
-          </p>
-          
-          {/* Keyboard Shortcuts Info */}
-          <div className={`mt-4 inline-flex items-center px-4 py-2 rounded-lg text-xs transition-all duration-300 ${
-            isDarkMode 
-              ? 'bg-gray-700 text-gray-300 border border-gray-600' 
-              : 'bg-gray-100 text-gray-600 border border-gray-200'
-          }`}>
-            <span className="mr-2">⌨️</span>
-            <span className="font-medium">Shortcuts:</span>
-            <span className="ml-2">Ctrl+Z (Undo) • Ctrl+Y (Redo) • Ctrl+D (Dark Mode)</span>
-          </div>
-        </div>
-
-        <div className={`rounded-2xl shadow-xl p-8 border transition-all duration-300 ${
-          isDarkMode 
-            ? 'bg-gray-800 border-gray-700' 
-            : 'bg-white border-gray-100'
+        {/* Input Configuration */}
+        <div className={`p-8 rounded-3xl shadow-2xl backdrop-blur-xl border ${
+          isDarkMode ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-slate-200/50'
         }`}>
-          {/* Input Fields */}
-          <div className="grid md:grid-cols-3 gap-6 mb-8">
-            <div className="space-y-2">
-              <label className={`flex items-center text-sm font-semibold mb-3 transition-colors duration-300 ${
-                isDarkMode ? 'text-gray-200' : 'text-gray-700'
-              }`}>
-                <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                Number of Parcels
+          <div className="grid md:grid-cols-3 gap-8">
+            <div className="space-y-3">
+              <label className="text-sm font-bold uppercase tracking-wider opacity-80 flex items-center gap-2">
+                <FilePlus className="w-4 h-4 text-blue-500" /> Number of Parcels
               </label>
               <input
                 type="number"
                 value={parcelCount}
-                onChange={(e) => {
-                  setParcelCount(e.target.value);
-                  saveToHistory({ action: 'Update parcel count' });
-                }}
-                className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 hover:border-gray-500' 
-                    : 'bg-white border-gray-200 text-gray-900 placeholder-gray-500 hover:border-gray-300'
+                onChange={(e) => { setParcelCount(e.target.value); saveToHistory({ action: 'Update count' }); }}
+                className={`w-full px-5 py-4 rounded-2xl border-2 font-medium text-lg outline-none transition-all ${
+                  isDarkMode ? 'bg-slate-900/50 border-slate-700 focus:border-blue-500' : 'bg-slate-50 border-slate-200 focus:border-blue-500'
                 }`}
-                placeholder="Enter number..."
+                placeholder="e.g. 6"
               />
             </div>
-
-            <div className="space-y-2">
-              <label className={`flex items-center text-sm font-semibold mb-3 transition-colors duration-300 ${
-                isDarkMode ? 'text-gray-200' : 'text-gray-700'
-              }`}>
-                <span className="w-2 h-2 bg-green-500 rounded-full mr-2"></span>
-                Registered Area (m²)
+            <div className="space-y-3">
+              <label className="text-sm font-bold uppercase tracking-wider opacity-80 flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-500" /> Registered Area (m²)
               </label>
               <input
                 type="number"
                 step="0.01"
                 value={registeredArea}
-                onChange={(e) => {
-                  setRegisteredArea(e.target.value);
-                  saveToHistory({ action: 'Update registered area' });
-                }}
-                className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 hover:border-gray-500' 
-                    : 'bg-white border-gray-200 text-gray-900 placeholder-gray-500 hover:border-gray-300'
+                onChange={(e) => { setRegisteredArea(e.target.value); saveToHistory({ action: 'Update registered area' }); }}
+                className={`w-full px-5 py-4 rounded-2xl border-2 font-medium text-lg outline-none transition-all ${
+                  isDarkMode ? 'bg-slate-900/50 border-slate-700 focus:border-green-500' : 'bg-slate-50 border-slate-200 focus:border-green-500'
                 }`}
-                placeholder="Enter registered area..."
+                placeholder="e.g. 11252.00"
               />
             </div>
-
-            <div className="space-y-2">
-              <label className={`flex items-center text-sm font-semibold mb-3 transition-colors duration-300 ${
-                isDarkMode ? 'text-gray-200' : 'text-gray-700'
-              }`}>
-                <span className="w-2 h-2 bg-purple-500 rounded-full mr-2"></span>
-                Calculated Area (m²)
+            <div className="space-y-3">
+              <label className="text-sm font-bold uppercase tracking-wider opacity-80 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-purple-500" /> Calculated Area (m²)
               </label>
               <input
                 type="number"
                 step="0.01"
                 value={calculatedArea}
-                onChange={(e) => {
-                  setCalculatedArea(e.target.value);
-                  saveToHistory({ action: 'Update calculated area' });
-                }}
-                className={`w-full px-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                  isDarkMode 
-                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 hover:border-gray-500' 
-                    : 'bg-white border-gray-200 text-gray-900 placeholder-gray-500 hover:border-gray-300'
+                onChange={(e) => { setCalculatedArea(e.target.value); saveToHistory({ action: 'Update calculated area' }); }}
+                className={`w-full px-5 py-4 rounded-2xl border-2 font-medium text-lg outline-none transition-all ${
+                  isDarkMode ? 'bg-slate-900/50 border-slate-700 focus:border-purple-500' : 'bg-slate-50 border-slate-200 focus:border-purple-500'
                 }`}
-                placeholder="Enter calculated area..."
+                placeholder="Sum of parcels"
               />
             </div>
           </div>
 
-          {/* Generate Button */}
-          <button
-            onClick={generateParcels}
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 mb-6"
-          >
-            <span className="flex items-center justify-center">
-              <span className="mr-2">🚀</span>
-              Generate Parcels
-            </span>
-          </button>
-
-          {/* Dynamic Parcel Inputs */}
-          {parcels.length > 0 && (
-            <div className={`rounded-xl p-6 mb-6 border transition-all duration-300 ${
-              isDarkMode 
-                ? 'bg-gray-700 border-gray-600' 
-                : 'bg-gray-50 border-gray-200'
+          {/* Instant Error Summary Card */}
+          {errorCalc && (
+            <div className={`mt-8 p-6 rounded-2xl border flex items-center justify-between ${
+              errorCalc.exceedsLimit 
+                ? 'bg-red-500/10 border-red-500/30' 
+                : 'bg-green-500/10 border-green-500/30'
             }`}>
-              <h3 className={`text-lg font-semibold mb-4 flex items-center transition-colors duration-300 ${
-                isDarkMode ? 'text-gray-200' : 'text-gray-800'
-              }`}>
-                <span className="mr-2">📝</span>
-                Parcel Details ({parcels.length} parcels)
-              </h3>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
-                {parcels.map((parcel, index) => (
-                  <div key={parcel.id} className={`flex gap-3 items-center p-4 rounded-lg shadow-sm border hover:shadow-md transition-all duration-200 ${
-                    isDarkMode 
-                      ? 'bg-gray-800 border-gray-600 hover:bg-gray-700' 
-                      : 'bg-white border-gray-100 hover:bg-gray-50'
-                  }`}>
-                    <div className="flex-shrink-0 w-8 h-8 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full flex items-center justify-center text-white text-sm font-bold">
-                      {index + 1}
-                    </div>
-                    <input
-                      type="number"
-                      placeholder="Parcel Number"
-                      value={parcel.parcelNumber}
-                      onChange={(e) => {
-                        updateParcelInput(parcel.id, 'parcelNumber', e.target.value);
-                        saveToHistory({ action: 'Update parcel number' });
-                      }}
-                      className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                        isDarkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                          : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-500'
-                      }`}
-                    />
-                    <input
-                      type="number"
-                      placeholder="Area (m²)"
-                      value={parcel.parcelArea}
-                      onChange={(e) => {
-                        updateParcelInput(parcel.id, 'parcelArea', e.target.value);
-                        saveToHistory({ action: 'Update parcel area' });
-                      }}
-                      className={`flex-1 px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 ${
-                        isDarkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' 
-                          : 'bg-gray-50 border-gray-200 text-gray-900 placeholder-gray-500'
-                      }`}
-                    />
-                    <button
-                      onClick={() => {
-                        addParcelRow(parcels.length + 1);
-                        saveToHistory({ action: 'Add parcel row' });
-                      }}
-                      className="w-10 h-10 bg-green-500 hover:bg-green-600 text-white rounded-lg font-bold shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200"
-                      title="Add parcel"
-                    >
-                      +
-                    </button>
-                    <button
-                      onClick={() => {
-                        removeParcelRow(parcel.id);
-                        saveToHistory({ action: 'Remove parcel row' });
-                      }}
-                      className="w-10 h-10 bg-red-500 hover:bg-red-600 text-white rounded-lg font-bold shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200"
-                      title="Remove parcel"
-                    >
-                      −
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
-            {showCalculate && (
-              <button
-                onClick={calculateResults}
-                disabled={isCalculating}
-                className="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 disabled:from-gray-400 disabled:to-gray-500 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 disabled:transform-none disabled:cursor-not-allowed"
-              >
-                {isCalculating ? (
-                  <span className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Calculating...
-                  </span>
-                ) : (
-                  <span className="flex items-center justify-center">
-                    <span className="mr-2">🧮</span>
-                    Calculate Results
-                  </span>
-                )}
-              </button>
-            )}
-
-            {showCopy && (
-              <>
-                <button
-                  onClick={copyTable}
-                  className="flex-1 sm:flex-none bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
-                >
-                  <span className="flex items-center justify-center">
-                    <span className="mr-2">📋</span>
-                    Copy Text
-                  </span>
-                </button>
-                
-                <button
-                  onClick={exportAsImage}
-                  className="flex-1 sm:flex-none bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white py-4 px-6 rounded-xl font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
-                >
-                  <span className="flex items-center justify-center">
-                    <span className="mr-2">🖼️</span>
-                    Copy Image
-                  </span>
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* Results */}
-          {results && (
-            <div className={`rounded-xl p-6 border animate-fadeIn transition-all duration-300 ${
-              isDarkMode 
-                ? 'bg-gradient-to-r from-gray-800 to-gray-700 border-gray-600' 
-                : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
-            }`}>
-              <h3 className={`text-xl font-bold mb-4 flex items-center transition-colors duration-300 ${
-                isDarkMode ? 'text-gray-200' : 'text-gray-800'
-              }`}>
-                <span className="mr-2">📊</span>
-                Calculation Results
-              </h3>
-              
-              {/* Summary Stats */}
-              <div className="grid md:grid-cols-2 gap-4 mb-6">
-                <div className={`p-4 rounded-lg shadow-sm border transition-all duration-300 ${
-                  isDarkMode 
-                    ? 'bg-gray-800 border-gray-600' 
-                    : 'bg-white border-gray-200'
-                }`}>
-                  <div className={`text-sm mb-1 transition-colors duration-300 ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                  }`}>Absolute Difference</div>
-                  <div className="text-2xl font-bold text-blue-600">{results.absoluteDifference}</div>
-                </div>
-                <div className={`p-4 rounded-lg shadow-sm border transition-all duration-300 ${
-                  isDarkMode 
-                    ? 'bg-gray-800 border-gray-600' 
-                    : 'bg-white border-gray-200'
-                }`}>
-                  <div className={`text-sm mb-1 transition-colors duration-300 ${
-                    isDarkMode ? 'text-gray-400' : 'text-gray-600'
-                  }`}>Permissible Error</div>
-                  <div className="text-2xl font-bold text-green-600">{results.permissibleError}</div>
-                </div>
-              </div>
-
-              {results.exceedsLimit && (
-                <div className={`rounded-lg p-4 mb-6 border transition-all duration-300 ${
-                  isDarkMode 
-                    ? 'bg-red-900/20 border-red-700' 
-                    : 'bg-red-50 border-red-200'
-                }`}>
-                  <div className="flex items-center">
-                    <span className="text-red-500 mr-2">⚠️</span>
-                    <span className={`font-semibold transition-colors duration-300 ${
-                      isDarkMode ? 'text-red-300' : 'text-red-700'
-                    }`}>
-                      Error exceeds permissible limits. Using original areas.
-                    </span>
-                  </div>
-                </div>
-              )}
-
-              {/* Results Table */}
-              <div className={`rounded-lg shadow-sm border overflow-hidden transition-all duration-300 ${
-                isDarkMode 
-                  ? 'bg-gray-800 border-gray-600' 
-                  : 'bg-white border-gray-200'
-              }`}>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-                        <th className="px-6 py-4 text-left font-semibold">Parcel Number</th>
-                        <th className="px-6 py-4 text-right font-semibold">New Area (m²)</th>
-                        <th className="px-6 py-4 text-right font-semibold">Rounded Area (m²)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {results.tableData.map((row, index) => (
-                        <tr
-                          key={index}
-                          className={`transition-colors duration-150 ${
-                            isDarkMode
-                              ? `${index % 2 === 0 ? 'bg-gray-800' : 'bg-gray-700'} hover:bg-gray-700`
-                              : `${index % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50`
-                          }`}
-                        >
-                          <td className={`px-6 py-4 font-medium transition-colors duration-300 ${
-                            isDarkMode ? 'text-gray-200' : 'text-gray-900'
-                          }`}>
-                            {row.parcelNumber}
-                          </td>
-                          <td className={`px-6 py-4 text-right transition-colors duration-300 ${
-                            isDarkMode ? 'text-gray-300' : 'text-gray-700'
-                          }`}>
-                            {row.newArea}
-                          </td>
-                          <td className={`px-6 py-4 text-right font-semibold transition-colors duration-300 ${
-                            isDarkMode ? 'text-gray-200' : 'text-gray-900'
-                          }`}>
-                            {row.roundedArea}
-                          </td>
-                        </tr>
-                      ))}
-                      <tr className={`border-t-2 transition-colors duration-300 ${
-                        isDarkMode 
-                          ? 'bg-gradient-to-r from-gray-700 to-gray-600 border-gray-500' 
-                          : 'bg-gradient-to-r from-gray-100 to-gray-200 border-gray-300'
-                      }`}>
-                        <td className={`px-6 py-4 font-bold transition-colors duration-300 ${
-                          isDarkMode ? 'text-gray-200' : 'text-gray-900'
-                        }`}>
-                          Total:
-                        </td>
-                        <td className="px-6 py-4 text-right font-bold text-blue-600">
-                          {results.totalBeforeRounding}
-                        </td>
-                        <td className="px-6 py-4 text-right font-bold text-indigo-600 text-lg">
-                          {results.totalAfterRounding}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className={`text-center mt-8 transition-colors duration-300 ${
-          isDarkMode ? 'text-gray-400' : 'text-gray-500'
-        }`}>
-          <p>Professional Parcel Area Calculator • Built with React & Tailwind CSS</p>
-        </div>
-      </div>
-
-      {/* Notification System */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
-        {notifications.map((notification) => (
-          <div
-            key={notification.id}
-            className={`
-              max-w-sm p-4 rounded-lg shadow-lg border-l-4 backdrop-blur-sm
-              transform transition-all duration-300 ease-in-out
-              animate-slideIn
-              ${isDarkMode ? (
-                notification.type === 'success' ? 'bg-green-900/90 border-green-400 text-green-300' :
-                notification.type === 'error' ? 'bg-red-900/90 border-red-400 text-red-300' :
-                notification.type === 'warning' ? 'bg-yellow-900/90 border-yellow-400 text-yellow-300' :
-                'bg-blue-900/90 border-blue-400 text-blue-300'
-              ) : (
-                notification.type === 'success' ? 'bg-green-50 border-green-500 text-green-800' :
-                notification.type === 'error' ? 'bg-red-50 border-red-500 text-red-800' :
-                notification.type === 'warning' ? 'bg-yellow-50 border-yellow-500 text-yellow-800' :
-                'bg-blue-50 border-blue-500 text-blue-800'
-              )}
-            `}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-start space-x-2">
-                <div className="flex-shrink-0 mt-0.5">
-                  {notification.type === 'success' && <span className={isDarkMode ? 'text-green-400' : 'text-green-600'}>✅</span>}
-                  {notification.type === 'error' && <span className={isDarkMode ? 'text-red-400' : 'text-red-600'}>❌</span>}
-                  {notification.type === 'warning' && <span className={isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}>⚠️</span>}
-                  {notification.type === 'info' && <span className={isDarkMode ? 'text-blue-400' : 'text-blue-600'}>ℹ️</span>}
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium leading-5">
-                    {notification.message}
+              <div className="flex items-center gap-4">
+                {errorCalc.exceedsLimit ? <AlertTriangle className="w-8 h-8 text-red-500" /> : <CheckCircle className="w-8 h-8 text-green-500" />}
+                <div>
+                  <h3 className="font-bold text-lg">Error Calculation Summary</h3>
+                  <p className="text-sm opacity-80 mt-1">
+                    Difference: <span className="font-bold">{errorCalc.absoluteDifference}</span> | 
+                    Permissible: <span className="font-bold">{errorCalc.permissibleError}</span>
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => removeNotification(notification.id)}
-                className={`ml-4 flex-shrink-0 transition-colors duration-200 ${
-                  isDarkMode ? 'text-gray-400 hover:text-gray-200' : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                <span className="sr-only">Close</span>
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+              <div className={`px-4 py-2 rounded-xl font-bold text-sm ${
+                errorCalc.exceedsLimit ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+              }`}>
+                {errorCalc.exceedsLimit ? 'EXCEEDS LIMITS' : 'WITHIN LIMITS'}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-8">
+            <button
+              onClick={generateParcels}
+              className="w-full py-4 rounded-2xl bg-slate-800 text-white hover:bg-slate-900 dark:bg-blue-600 dark:hover:bg-blue-700 font-bold text-lg shadow-xl transition-all"
+            >
+              Generate Parcel Table
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic Parcel Table */}
+        {parcels.length > 0 && (
+          <div className={`p-8 rounded-3xl shadow-xl border ${
+            isDarkMode ? 'bg-slate-800/40 border-slate-700' : 'bg-white border-slate-200'
+          }`}>
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold flex items-center gap-3">
+                <FileText className="w-6 h-6 text-blue-500" /> Parcel Details
+              </h2>
+              <button onClick={() => addParcelRow(parcels.length + 1)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold hover:bg-blue-500/20 transition-all">
+                <Plus className="w-4 h-4" /> Add Row
               </button>
             </div>
+            
+            <div className="space-y-3">
+              {/* Header */}
+              <div className="grid grid-cols-12 gap-4 px-4 py-2 text-sm font-bold uppercase tracking-wider opacity-60">
+                <div className="col-span-1">#</div>
+                <div className="col-span-3">Parcel ID</div>
+                <div className="col-span-4">Original Area (m²)</div>
+                <div className="col-span-3">Points</div>
+                <div className="col-span-1 text-center">Action</div>
+              </div>
+
+              {parcels.map((parcel, index) => (
+                <div key={parcel.id} className={`grid grid-cols-12 gap-4 items-center p-4 rounded-2xl transition-all border ${
+                  isDarkMode ? 'bg-slate-900/50 border-slate-700 hover:border-blue-500/50' : 'bg-slate-50 border-slate-200 hover:border-blue-500/30'
+                }`}>
+                  <div className="col-span-1 font-bold opacity-50 pl-2">{index + 1}</div>
+                  <div className="col-span-3">
+                    <input
+                      type="text"
+                      value={parcel.parcelNumber}
+                      onChange={(e) => updateParcelInput(parcel.id, 'parcelNumber', e.target.value)}
+                      className={`w-full px-4 py-3 rounded-xl border outline-none font-medium ${
+                        isDarkMode ? 'bg-slate-800 border-slate-600 focus:border-blue-500' : 'bg-white border-slate-300 focus:border-blue-500'
+                      }`}
+                      placeholder="ID"
+                    />
+                  </div>
+                  <div className="col-span-4">
+                    <input
+                      type="number"
+                      step="0.0001"
+                      value={parcel.parcelArea}
+                      onChange={(e) => updateParcelInput(parcel.id, 'parcelArea', e.target.value)}
+                      className={`w-full px-4 py-3 rounded-xl border outline-none font-medium ${
+                        isDarkMode ? 'bg-slate-800 border-slate-600 focus:border-blue-500' : 'bg-white border-slate-300 focus:border-blue-500'
+                      }`}
+                      placeholder="0.0000"
+                    />
+                  </div>
+                  <div className="col-span-3">
+                    <input
+                      type="number"
+                      value={parcel.points}
+                      onChange={(e) => updateParcelInput(parcel.id, 'points', e.target.value)}
+                      className={`w-full px-4 py-3 rounded-xl border outline-none font-medium ${
+                        isDarkMode ? 'bg-slate-800 border-slate-600 focus:border-blue-500' : 'bg-white border-slate-300 focus:border-blue-500'
+                      }`}
+                      placeholder="e.g. 13"
+                    />
+                  </div>
+                  <div className="col-span-1 flex justify-center">
+                    <button onClick={() => removeParcelRow(parcel.id)} className="p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                      <Trash2 className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8">
+              <button
+                onClick={calculateResults}
+                disabled={isCalculating}
+                className="w-full py-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-lg shadow-xl shadow-blue-500/30 hover:shadow-blue-500/50 flex items-center justify-center gap-3 transition-all"
+              >
+                {isCalculating ? <RefreshCw className="w-6 h-6 animate-spin" /> : <Calculator className="w-6 h-6" />}
+                {isCalculating ? 'Processing...' : 'Run Final Calculations'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Calculation Results */}
+        {results && (
+          <div className={`p-8 rounded-3xl shadow-xl border animate-fadeIn ${
+            isDarkMode ? 'bg-slate-800/60 border-slate-700' : 'bg-white border-slate-200'
+          }`}>
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+              <CheckCircle className="w-6 h-6 text-green-500" /> Final Adjusted Results
+            </h2>
+            
+            <div className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-100 dark:bg-slate-900 text-sm uppercase tracking-wider font-bold">
+                    <th className="p-4 border-b border-slate-200 dark:border-slate-700">Parcel #</th>
+                    <th className="p-4 border-b border-slate-200 dark:border-slate-700 text-right">Original (m²)</th>
+                    <th className="p-4 border-b border-slate-200 dark:border-slate-700 text-right text-blue-600 dark:text-blue-400">Adjusted (m²)</th>
+                    <th className="p-4 border-b border-slate-200 dark:border-slate-700 text-right text-indigo-600 dark:text-indigo-400">Rounded (m²)</th>
+                    <th className="p-4 border-b border-slate-200 dark:border-slate-700 text-center">Points</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
+                  {results.tableData.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                      <td className="p-4">{row.parcelNumber}</td>
+                      <td className="p-4 text-right opacity-80">{row.originalArea}</td>
+                      <td className="p-4 text-right text-blue-600 dark:text-blue-400 font-bold">{row.newArea}</td>
+                      <td className="p-4 text-right text-indigo-600 dark:text-indigo-400 font-extrabold">{row.roundedArea}</td>
+                      <td className="p-4 text-center opacity-80">{row.points}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-slate-50 dark:bg-slate-900/50 font-extrabold text-lg">
+                    <td className="p-4">TOTAL</td>
+                    <td className="p-4 text-right">{parseFloat(calculatedArea).toFixed(4)}</td>
+                    <td className="p-4 text-right text-blue-600 dark:text-blue-400">{results.totalBeforeRounding}</td>
+                    <td className="p-4 text-right text-indigo-600 dark:text-indigo-400">{results.totalAfterRounding}</td>
+                    <td className="p-4 text-center">{results.tableData.reduce((acc, r) => acc + (parseInt(r.points) || 0), 0)}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Notifications */}
+      <div className="fixed bottom-6 right-6 z-50 space-y-3">
+        {notifications.map(n => (
+          <div key={n.id} className={`p-4 rounded-2xl shadow-xl flex items-center gap-3 backdrop-blur-md border ${
+            isDarkMode ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+          }`}>
+            {n.type === 'success' ? <CheckCircle className="w-5 h-5 text-green-500" /> : 
+             n.type === 'error' ? <AlertTriangle className="w-5 h-5 text-red-500" /> : 
+             <FileText className="w-5 h-5 text-blue-500" />}
+            <p className="font-medium text-sm">{n.message}</p>
           </div>
         ))}
       </div>
 
-      <style jsx>{`
+      <style jsx="true">{`
         @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
+          from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .animate-fadeIn {
-          animation: fadeIn 0.5s ease-out;
-        }
-        
-        @keyframes slideIn {
-          from { 
-            opacity: 0; 
-            transform: translateX(100%); 
-          }
-          to { 
-            opacity: 1; 
-            transform: translateX(0); 
-          }
-        }
-        .animate-slideIn {
-          animation: slideIn 0.3s ease-out;
-        }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
       `}</style>
     </div>
   );
 }
 
-export default App; 
+export default App;
