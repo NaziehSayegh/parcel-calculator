@@ -58,7 +58,7 @@ export default function App() {
   useEffect(() => {
     const h = (e) => {
       if (e.ctrlKey && e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
-      if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'Z')) { e.preventDefault(); redo(); }
+      if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && (e.key === 'z' || e.key === 'Z'))) { e.preventDefault(); redo(); }
     };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
@@ -99,18 +99,16 @@ export default function App() {
   /* ── history ── */
   const saveToHistory = (action) => {
     const snap = { registeredArea, calculatedArea, parcelCount, parcels, results, action };
-    setHistory(h => {
-      const next = [...h.slice(0, historyIndex + 1), snap].slice(-30);
-      setHistoryIndex(next.length - 1);
-      return next;
-    });
+    const next = [...history.slice(0, historyIndex + 1), snap].slice(-30);
+    setHistory(next);
+    setHistoryIndex(next.length - 1);
   };
   const undo = () => {
     if (historyIndex > 0) {
       const s = history[historyIndex - 1];
       setRegisteredArea(s.registeredArea); setCalculatedArea(s.calculatedArea);
       setParcelCount(s.parcelCount); setParcels(s.parcels); setResults(s.results);
-      setHistoryIndex(i => i - 1);
+      setHistoryIndex(historyIndex - 1);
     }
   };
   const redo = () => {
@@ -118,7 +116,7 @@ export default function App() {
       const s = history[historyIndex + 1];
       setRegisteredArea(s.registeredArea); setCalculatedArea(s.calculatedArea);
       setParcelCount(s.parcelCount); setParcels(s.parcels); setResults(s.results);
-      setHistoryIndex(i => i + 1);
+      setHistoryIndex(historyIndex + 1);
     }
   };
 
@@ -312,6 +310,7 @@ export default function App() {
                 step="0.0001"
                 value={registeredArea}
                 onChange={e => setRegisteredArea(e.target.value)}
+                onWheel={e => e.target.blur()}
                 className={input}
                 placeholder="e.g. 11252.0000"
               />
@@ -326,6 +325,7 @@ export default function App() {
                 step="0.0001"
                 value={calculatedArea}
                 onChange={e => setCalculatedArea(e.target.value)}
+                onWheel={e => e.target.blur()}
                 className={`${input} ${calculatedArea && !isNaN(parseFloat(calculatedArea)) ? (dm ? 'border-purple-500' : 'border-purple-400') : ''}`}
                 placeholder="Auto-filled from parcels below"
               />
@@ -381,6 +381,7 @@ export default function App() {
                 value={parcelCount}
                 onChange={e => setParcelCount(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && generateParcels()}
+                onWheel={e => e.target.blur()}
                 className={input}
                 placeholder="e.g. 6"
               />
@@ -424,6 +425,7 @@ export default function App() {
                         step="0.0001"
                         value={parcel.parcelArea}
                         onChange={e => updateParcel(parcel.id, 'parcelArea', e.target.value)}
+                        onWheel={e => e.target.blur()}
                         className={`${input} py-2 text-sm`}
                         placeholder="0.0000"
                       />
