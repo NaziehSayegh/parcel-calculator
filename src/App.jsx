@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { 
   Calculator, Download, FileText, CheckCircle, AlertTriangle, 
-  Moon, Sun, Plus, Minus, FilePlus, Copy, RefreshCw, Undo, Redo 
+  Moon, Sun, Plus, Minus, FilePlus, Copy, RefreshCw, Undo, Redo, Trash2
 } from 'lucide-react';
 
 function App() {
@@ -91,8 +91,7 @@ function App() {
     setParcels(prev => [...prev, {
       id: Date.now() + index,
       parcelNumber: (prev.length + 1).toString(),
-      parcelArea: '',
-      points: ''
+      parcelArea: ''
     }]);
   };
 
@@ -115,8 +114,7 @@ function App() {
     const newParcels = Array.from({ length: count }, (_, i) => ({
       id: Date.now() + i,
       parcelNumber: (i + 1).toString(),
-      parcelArea: '',
-      points: ''
+      parcelArea: ''
     }));
     
     setParcels(newParcels);
@@ -152,7 +150,6 @@ function App() {
     parcels.forEach((parcel) => {
       const pNum = parcel.parcelNumber.trim();
       const pArea = parseFloat(parcel.parcelArea);
-      const pts = parcel.points.trim();
       
       let newArea = pArea;
       let roundedArea = Math.round(newArea);
@@ -169,8 +166,7 @@ function App() {
           parcelNumber: pNum,
           originalArea: pArea.toFixed(4),
           newArea: newArea.toFixed(4),
-          roundedArea,
-          points: pts
+          roundedArea
         });
       }
     });
@@ -248,8 +244,6 @@ function App() {
       y += 12;
       addText('PARCEL RESULTS:', true);
       y += 4;
-      
-      const totalPoints = results.tableData.reduce((acc, r) => acc + (parseInt(r.points) || 0), 0);
 
       autoTable(doc, {
         startY: y,
@@ -257,29 +251,26 @@ function App() {
         styles: { font: 'courier', fontSize: 10, cellPadding: 1.5 },
         headStyles: { fontStyle: 'normal', textColor: [0, 0, 0] },
         columnStyles: {
-          0: { cellWidth: 30 },
-          1: { cellWidth: 40 },
-          2: { cellWidth: 40 },
-          3: { cellWidth: 30 },
-          4: { cellWidth: 20 }
+          0: { cellWidth: 35 },
+          1: { cellWidth: 48 },
+          2: { cellWidth: 48 },
+          3: { cellWidth: 40 }
         },
-        head: [['Parcel #', 'Original (m2)', 'Adjusted (m2)', 'Rounded (m2)', 'Points']],
+        head: [['Parcel #', 'Original (m2)', 'Adjusted (m2)', 'Rounded (m2)']],
         body: [
-          ['--------', '-------------', '-------------', '------------', '------'],
+          ['--------', '-------------', '-------------', '------------'],
           ...results.tableData.map(row => [
             row.parcelNumber,
             row.originalArea,
             row.newArea,
-            row.roundedArea,
-            row.points || ''
+            row.roundedArea
           ]),
-          ['', '', '', '', ''],
+          ['', '', '', ''],
           [
             'TOTAL:',
             calcArea,
             results.totalBeforeRounding,
-            results.totalAfterRounding,
-            totalPoints || ''
+            results.totalAfterRounding
           ]
         ]
       });
@@ -455,10 +446,9 @@ function App() {
               {/* Header */}
               <div className="grid grid-cols-12 gap-4 px-4 py-2 text-sm font-bold uppercase tracking-wider opacity-60">
                 <div className="col-span-1">#</div>
-                <div className="col-span-3">Parcel ID</div>
-                <div className="col-span-4">Original Area (m²)</div>
-                <div className="col-span-3">Points</div>
-                <div className="col-span-1 text-center">Action</div>
+                <div className="col-span-4">Parcel ID</div>
+                <div className="col-span-6">Original Area (m²)</div>
+                <div className="col-span-1 text-center">Del</div>
               </div>
 
               {parcels.map((parcel, index) => (
@@ -466,7 +456,7 @@ function App() {
                   isDarkMode ? 'bg-slate-900/50 border-slate-700 hover:border-blue-500/50' : 'bg-slate-50 border-slate-200 hover:border-blue-500/30'
                 }`}>
                   <div className="col-span-1 font-bold opacity-50 pl-2">{index + 1}</div>
-                  <div className="col-span-3">
+                  <div className="col-span-4">
                     <input
                       type="text"
                       value={parcel.parcelNumber}
@@ -477,7 +467,7 @@ function App() {
                       placeholder="ID"
                     />
                   </div>
-                  <div className="col-span-4">
+                  <div className="col-span-6">
                     <input
                       type="number"
                       step="0.0001"
@@ -487,17 +477,6 @@ function App() {
                         isDarkMode ? 'bg-slate-800 border-slate-600 focus:border-blue-500' : 'bg-white border-slate-300 focus:border-blue-500'
                       }`}
                       placeholder="0.0000"
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <input
-                      type="number"
-                      value={parcel.points}
-                      onChange={(e) => updateParcelInput(parcel.id, 'points', e.target.value)}
-                      className={`w-full px-4 py-3 rounded-xl border outline-none font-medium ${
-                        isDarkMode ? 'bg-slate-800 border-slate-600 focus:border-blue-500' : 'bg-white border-slate-300 focus:border-blue-500'
-                      }`}
-                      placeholder="e.g. 13"
                     />
                   </div>
                   <div className="col-span-1 flex justify-center">
@@ -539,7 +518,6 @@ function App() {
                     <th className="p-4 border-b border-slate-200 dark:border-slate-700 text-right">Original (m²)</th>
                     <th className="p-4 border-b border-slate-200 dark:border-slate-700 text-right text-blue-600 dark:text-blue-400">Adjusted (m²)</th>
                     <th className="p-4 border-b border-slate-200 dark:border-slate-700 text-right text-indigo-600 dark:text-indigo-400">Rounded (m²)</th>
-                    <th className="p-4 border-b border-slate-200 dark:border-slate-700 text-center">Points</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
@@ -549,7 +527,6 @@ function App() {
                       <td className="p-4 text-right opacity-80">{row.originalArea}</td>
                       <td className="p-4 text-right text-blue-600 dark:text-blue-400 font-bold">{row.newArea}</td>
                       <td className="p-4 text-right text-indigo-600 dark:text-indigo-400 font-extrabold">{row.roundedArea}</td>
-                      <td className="p-4 text-center opacity-80">{row.points}</td>
                     </tr>
                   ))}
                   <tr className="bg-slate-50 dark:bg-slate-900/50 font-extrabold text-lg">
@@ -557,7 +534,6 @@ function App() {
                     <td className="p-4 text-right">{parseFloat(calculatedArea).toFixed(4)}</td>
                     <td className="p-4 text-right text-blue-600 dark:text-blue-400">{results.totalBeforeRounding}</td>
                     <td className="p-4 text-right text-indigo-600 dark:text-indigo-400">{results.totalAfterRounding}</td>
-                    <td className="p-4 text-center">{results.tableData.reduce((acc, r) => acc + (parseInt(r.points) || 0), 0)}</td>
                   </tr>
                 </tbody>
               </table>
